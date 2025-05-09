@@ -47,7 +47,7 @@
         <v-color-picker v-model="fontColor" mode="hex"></v-color-picker>
       </v-col>
       <v-col>
-        <img :src="previewImg" alt="preview" />
+        <img :src="previewImg ?? ''" alt="preview" />
       </v-col>
     </v-row>
   </v-form>
@@ -81,7 +81,7 @@ const imageFile: Ref<File | null> = ref(null)
 const originImg: Ref<string | null> = ref(null)
 const previewImg: Ref<string | null> = ref(null)
 const text: Ref<string> = ref('')
-const pX = ref(10)
+const pX: Ref<number> = ref(10)
 const pY: Ref<number> = ref(10)
 const fontSize: Ref<number> = ref(36)
 const fontColor: Ref<string> = ref('white')
@@ -101,6 +101,8 @@ const handleUpload = (e: any) => {
 }
 const generateWatermark = () => {
   if (!originImg.value) return
+  if (text.value.length === 0) return
+
   const img = new Image()
   img.src = originImg.value
   img.onload = () => {
@@ -112,7 +114,7 @@ const generateWatermark = () => {
       ctx.drawImage(img, 0, 0)
       ctx.font = `${fontSize.value}px Arial`
       ctx.fillStyle = fontColor.value
-      ctx.fillText(text.value, pX, pY)
+      ctx.fillText(text.value, pX.value, pY.value)
     }
 
     previewImg.value = canvas.toDataURL('image/jpeg')
