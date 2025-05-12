@@ -59,6 +59,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted } from 'vue'
 import type { Ref } from 'vue'
+import { debounce, reject } from 'lodash'
 
 // font size setting
 interface FontSizeOption {
@@ -85,7 +86,7 @@ const originImg: Ref<string | null> = ref(null)
 const previewImg: Ref<string | null> = ref(null)
 const text: Ref<string> = ref('')
 const pX: Ref<number> = ref(10)
-const pY: Ref<number> = ref(30)
+const pY: Ref<number> = ref(0)
 const fontSize: Ref<number> = ref(36)
 const fontColor: Ref<string> = ref('#FFF')
 const loading: Ref<{ previewLoading: boolean; apiLoading: boolean }> = ref({
@@ -94,12 +95,43 @@ const loading: Ref<{ previewLoading: boolean; apiLoading: boolean }> = ref({
 })
 
 // methods
-const handleUpload = (e: any) => {
+const handleUpload = async (e: any) => {
   const file = e.target.files[0]
   if (file) {
     imageFile.value = file
-    originImg.value = URL.createObjectURL(file)
+    // 壓縮圖片
+    const compressedImg = await compressedImage(file, 1920)
+    originImg.value = compressedImg
+    // URL.createObjectURL無法對圖片做壓縮或縮放
+    // originImg.value = URL.createObjectURL(file)
   }
+}
+
+const compressedImage = async (file: File, maxWidth: number): Promise<string> => {
+  return new Promise((res, rej) => {
+    const img = new Image()
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onload = (e: any) => {
+      img.src = e.target?.result as string
+    }
+    reader.onerror = rej
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      let width = img.width
+      let height = img.height
+      if (width > maxWidth) {
+        height = (maxWidth / width) * height
+        width = maxWidth
+      }
+      canvas.width = width
+      canvas.height = height
+      ctx?.drawImage(img, 0, 0, width, height)
+      res(canvas.toDataURL('image/jpeg', 0.6))
+    }
+    img.onerror = rej
+  })
 }
 
 const canvas = document.createElement('canvas')
@@ -120,7 +152,12 @@ const generateWatermark = () => {
       if (text.value) {
         ctx.font = `${fontSize.value}px Arial`
         ctx.fillStyle = fontColor.value
-        ctx.fillText(text.value, pX.value, pY.value)
+        const [width, height] = getTextSize()
+        ctx.fillText(
+          text.value,
+          pX.value + width > canvas.width ? canvas.width - width : pX.value,
+          pY.value < height ? height : pY.value,
+        )
       }
     }
     previewImg.value = canvas.toDataURL('image/jpeg')
@@ -131,19 +168,22 @@ const generateWatermark = () => {
   }
 }
 
-const getTextWidth = () => {
-  if (!text.value || !ctx) return 0
+// 每0.1秒更新一次
+// const generateWatermarkDebounced = debounce(generateWatermark, 100)
+
+const getTextSize = (): number[] => {
+  if (!text.value || !ctx) return [0, 0]
   ctx.font = `${fontSize.value}px Arial`
   const metrics = ctx.measureText(text.value)
-  return [Math.ceil(metrics.width), Math.ceil(metrics.height)]
+  const height = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent
+  return [Math.ceil(metrics.width), Math.ceil(height)]
 }
 
 const maxPx = computed(() => {
-  return Math.max(10, canvas.width - getTextWidth()[0])
+  return Math.max(10, canvas.width - getTextSize()[0])
 })
 const minPy = computed(() => {
-  // 待修正
-  return Math.min(30, getTextWidth()[1])
+  return Math.min(30, getTextSize()[1])
 })
 
 watch([originImg, text, pX, pY, fontSize, fontColor], generateWatermark)
