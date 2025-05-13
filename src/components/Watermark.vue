@@ -25,7 +25,7 @@
           prepend-icon="mdi-arrow-left-right-bold"
           :min="10"
           :max="maxPx"
-          variant="outlined"
+          :disabled="text.length === 0"
         ></v-slider>
       </v-col>
       <v-col cols="6">
@@ -34,7 +34,8 @@
           label="y-position"
           prepend-icon="mdi-arrow-up-down-bold"
           :min="minPy"
-          :max="canvas.height"
+          :max="maxPy"
+          :disabled="text.length === 0"
         ></v-slider>
       </v-col>
     </v-row>
@@ -45,12 +46,21 @@
       :items="fontSizeOptions"
       variant="outlined"
     ></v-select>
+    <v-row align="center" justify="center" class="py-6">
+      <v-btn size="x-large" rounded="xl" type="submit">Add Watermark</v-btn>
+      <v-btn v-if="downloadImg" size="x-large" rounded="xl" @click="download" class="ml-4"
+        >Download</v-btn
+      >
+    </v-row>
     <v-row class="pl-10">
       <v-col cols="auto">
         <v-color-picker v-model="fontColor" mode="hex"></v-color-picker>
       </v-col>
       <v-col>
-        <img v-if="previewImg" :src="previewImg ?? ''" alt="preview" />
+        <v-skeleton-loader v-if="loading" type="paragraph"></v-skeleton-loader>
+        <template v-else>
+          <img v-if="previewImg && !loading" :src="previewImg ?? ''" alt="preview" />
+        </template>
       </v-col>
     </v-row>
   </v-form>
@@ -59,7 +69,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted } from 'vue'
 import type { Ref } from 'vue'
-import { debounce, reject } from 'lodash'
+// import { debounce, reject } from 'lodash'
+import { doUpload } from '@/api/axios'
 
 // font size setting
 interface FontSizeOption {
@@ -89,13 +100,13 @@ const pX: Ref<number> = ref(10)
 const pY: Ref<number> = ref(0)
 const fontSize: Ref<number> = ref(36)
 const fontColor: Ref<string> = ref('#FFF')
-const loading: Ref<{ previewLoading: boolean; apiLoading: boolean }> = ref({
-  previewLoading: false,
-  apiLoading: false,
-})
+const loading: Ref<boolean> = ref(false)
+
+const downloadImg: Ref<{ imgUrl: string; fileName: string } | null> = ref(null)
 
 // methods
 const handleUpload = async (e: any) => {
+  loading.value = true
   const file = e.target.files[0]
   if (file) {
     imageFile.value = file
@@ -105,6 +116,7 @@ const handleUpload = async (e: any) => {
     // URL.createObjectURL無法對圖片做壓縮或縮放
     // originImg.value = URL.createObjectURL(file)
   }
+  loading.value = false
 }
 
 const compressedImage = async (file: File, maxWidth: number): Promise<string> => {
@@ -183,7 +195,10 @@ const maxPx = computed(() => {
   return Math.max(10, canvas.width - getTextSize()[0])
 })
 const minPy = computed(() => {
-  return Math.min(30, getTextSize()[1])
+  return Math.min(0, getTextSize()[1])
+})
+const maxPy = computed(() => {
+  return canvas.height - getTextSize()[1] / 2
 })
 
 watch([originImg, text, pX, pY, fontSize, fontColor], generateWatermark)
@@ -194,5 +209,35 @@ onUnmounted(() => {
   }
 })
 
-const applyWatermark = async () => {}
+const applyWatermark = async () => {
+  loading.value = true
+  try {
+    const res = await doUpload('/watermark', imageFile.value as File, {
+      text: text.value,
+      x: pX.value.toFixed(0),
+      y: pY.value.toFixed(0),
+      font: fontSize.value,
+      color: fontColor.value,
+    })
+    downloadImg.value = res
+  } catch (err) {
+    console.log(err)
+  } finally {
+    loading.value = false
+  }
+}
+
+const download = () => {
+  if (!downloadImg.value) return
+
+  const { fileName, imgUrl } = downloadImg.value
+  const link = document.createElement('a')
+  link.download = fileName
+  link.href = imgUrl
+  document.body.appendChild(link)
+  link.click()
+  // 清理檔案
+  document.body.removeChild(link)
+  URL.revokeObjectURL(imgUrl)
+}
 </script>
