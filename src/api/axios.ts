@@ -8,6 +8,7 @@ interface ApiResponse<T> {
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL as string,
+  // baseURL: 'http://172.17.0.12:5000/api',
   headers: {
     'Content-Type': 'application/json',
   },
